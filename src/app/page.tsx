@@ -1,18 +1,156 @@
-import React from 'react';
+'use client';
 
+import React, { useState, useEffect } from 'react';
+import StatusDisplay from './component/statusDisplay';
+
+// Test interface: Represents a test with its ID, name, status, and timestamps for failure or success
+interface Test {
+  id: string;
+  name: string;
+  status: 'not run' | 'running' | 'failed' | 'passed';
+  failedAt?: string;
+  passedAt?: string;
+}
+
+// Home component: Main page of the application
 export default function Home() {
+  /* State variables: tests and running all flag */
+  const [tests, setTests] = useState<Test[]>([]);
+  const [isRunningAll, setIsRunningAll] = useState(false);
+
+  /* Mock data for demonstration - replace with actual API calls */
+  useEffect(() => {
+    /* Simulate fetching tests from server */
+    const mockTests: Test[] = [
+      { id: '1', name: 'test_homepage_loads', status: 'not run' },
+      { id: '2', name: 'test_article_links_work', status: 'not run' },
+      { id: '3', name: 'test_search_functionality', status: 'not run' },
+      { id: '4', name: 'test_user_login', status: 'not run' },
+      { id: '5', name: 'test_comment_system', status: 'not run' },
+    ];
+    setTests(mockTests);
+  }, []);
+
+  const formatTimestamp = (date: Date) => {
+    return date.toLocaleString('en-US', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+  };
+
+  const runTest = async (testId: string) => {
+    /* Update the test status to running */
+    setTests(prev => prev.map(test => 
+      test.id === testId ? { ...test, status: 'running' } : test
+    ));
+
+    try {
+      /* Simulate API call to run test */
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      /* Use random pass/fail */
+      const isPassed = Math.random() > 0.3;
+
+      /* Format the timestamp passedAt or failedAt at this moment */
+      const timestamp = formatTimestamp(new Date());
+      
+      /* Update the test status to passed or failed */
+      setTests(prev => prev.map(test => 
+        test.id === testId ? {
+          ...test,
+          status: isPassed ? 'passed' : 'failed',
+          passedAt: isPassed ? timestamp : undefined,
+          failedAt: !isPassed ? timestamp : undefined,
+        } : test
+      ));
+    } catch (error) {
+      /* Update the test status to failed if an error occurs */
+      // TODO: Handle error
+      setTests(prev => prev.map(test => 
+        test.id === testId ? { ...test, status: 'failed', failedAt: formatTimestamp(new Date()) } : test
+      ));
+    }
+  };
+
+  const runAllTests = async () => {
+    /* Set the running all flag to true */
+    setIsRunningAll(true);
+    
+    /* Run each test sequentially */
+    for (const test of tests) {
+      await runTest(test.id);
+      /* Small delay between tests */
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    setIsRunningAll(false);
+  };
+
   return (
     <>
       {/* Left Panel - Tests List Section */}
       <div className="flex-1 border-2 p-6">
-        <div className="h-full flex items-center justify-center">
-          <div className="text-center">
-            <h2 className="text-xl font-semibold mb-2">
-              Tests List Section
+        <div className="h-full flex flex-col">
+          {/* Header with Title and Run All Button */}
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-2xl font-bold text-gray-800">
+              Tests
             </h2>
-            <p className="text-gray-500">
-              Content will be displayed here
-            </p>
+            <button
+              onClick={runAllTests}
+              disabled={isRunningAll}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+            >
+              {isRunningAll ? 'Running All...' : 'Run All'}
+            </button>
+          </div>
+
+          {/* Horizontal Rule */}
+          <hr className="my-4 border-1"></hr>
+
+          {/* Tests List */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="space-y-2">
+              {tests.map((test) => (
+                <div
+                  key={test.id}
+                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border hover:bg-gray-100 transition-colors"
+                >
+                  {/* Script Icon */}
+                  <div className="flex items-center w-8">
+                    <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm0 2h12v12H4V4z" clipRule="evenodd" />
+                      <path fillRule="evenodd" d="M6 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+
+                  {/* Test Name */}
+                  <div className="flex-1 ml-4">
+                    <span className="font-mono text-sm text-gray-800">{test.name}</span>
+                  </div>
+
+                  {/* Test Status */}
+                  <div className="flex-1 text-center">
+                    <StatusDisplay status={test.status} failedAt={test.failedAt} passedAt={test.passedAt} />
+                  </div>
+
+                  {/* Run Button */}
+                  <div className="flex items-center w-20 justify-end">
+                    <button
+                      onClick={() => runTest(test.id)}
+                      disabled={test.status === 'running' || isRunningAll}
+                      className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white text-sm font-medium py-1 px-3 rounded transition-colors"
+                    >
+                      {test.status === 'running' ? 'Running' : 'Run'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -21,11 +159,11 @@ export default function Home() {
       <div className="flex-1 border-2 p-6">
         <div className="h-full flex items-center justify-center">
           <div className="text-center">
-            <h2 className="text-xl font-semibold mb-2">
+            <h2 className="text-xl font-semibold text-gray-700 mb-2">
               Console Output Section
             </h2>
             <p className="text-gray-500">
-              Content will be displayed here
+              Test output will be displayed here
             </p>
           </div>
         </div>
