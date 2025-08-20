@@ -2,7 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import StatusDisplay from './component/statusDisplay';
-import { Test } from '@/app/types/test';
+import ConsoleOutput from './component/consoleOutput';
+import { Test } from './types/test';
+import { WebSocketMessage } from './types/websocketMessage';
+import { WebSocketService } from './services/websocketService';
 
 // Home component: Main page of the application
 export default function Home() {
@@ -10,10 +13,40 @@ export default function Home() {
   const [tests, setTests] = useState<Test[]>([]);
   const [isRunningAll, setIsRunningAll] = useState(false);
 
+  /* Console output, connection status, 
+  and web socket service state variables */
+  const [consoleOutput, setConsoleOutput] = useState<string[]>([]);
+  const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
+  const [testOutputListener] = useState(() => new WebSocketService());
+
   /* Fetch tests from server */
   useEffect(() => {
     fetch('/api/tests').then(res => res.json()).then(data => setTests(data as Test[]));
   }, []);
+
+  /* WebSocket connection setup */
+  useEffect(() => {
+    const handleWebSocketMessage = (message: WebSocketMessage) => {
+      /* If the message is a test output, append it to the console output, 
+      prefixed with a now() timestamp */
+      if (message.type === 'test_output') {
+        setConsoleOutput(prev => [...prev, `[${new Date(message.timestamp).toLocaleTimeString()}] ${message.data}`]);
+      }
+    };
+
+    /* If the connection status changes, update the connection status state variable */
+    const handleWebSocketStatusChange = (connected: boolean) => {
+      setIsWebSocketConnected(connected);
+    };
+
+    /* Connect to the web socket server */
+    testOutputListener.connect(handleWebSocketMessage, handleWebSocketStatusChange);
+
+    /* Disconnect from the web socket server when the component unmounts */
+    return () => {
+      testOutputListener.disconnect();
+    };
+  }, [testOutputListener]);
 
   const formatTimestamp = (date: Date) => {
     return date.toLocaleString('en-US', {
@@ -27,14 +60,19 @@ export default function Home() {
   };
 
   const runTest = async (testId: string) => {
+    /* Find the test in the tests array */
+    const test = tests.find(t => t.id === testId) as Test;
+    /* If the test is not found, return */
+    if (!test) {   
+      console.error(`Run test failed: Test not found: ${testId}`);
+      return
+    }
+
     /* Update the test status to running */
     tests.map(test => test.id === testId ? { ...test, status: 'running' } : test);
     setTests(prev => prev.map(test => 
       test.id === testId ? { ...test, status: 'running' } : test
     ));
-
-    /* Get the test from the tests array */
-    const test = tests.find(test => test.id === testId) as Test;
 
     try {
       /* Update the test status to running on the server */
@@ -168,16 +206,10 @@ export default function Home() {
 
       {/* Right Panel - Console Output Section */}
       <div className="flex-1 border-2 p-6">
-        <div className="h-full flex items-center justify-center">
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-gray-700 mb-2">
-              Console Output Section
-            </h2>
-            <p className="text-gray-500">
-              Test output will be displayed here
-            </p>
-          </div>
-        </div>
+        <ConsoleOutput 
+          output={consoleOutput} 
+          isConnected={isWebSocketConnected} 
+        />
       </div>
     </>
   );

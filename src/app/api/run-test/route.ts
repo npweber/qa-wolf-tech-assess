@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execCommandRealtime, RealtimeOutput } from '@/app/lib/execRealtime';
+import { WebSocketService } from '@/app/services/websocketService';
+import { WebSocketMessage } from '@/app/types/websocketMessage';
 
 // Run a test by name
 export async function POST(request: NextRequest) {
@@ -38,13 +40,30 @@ export async function POST(request: NextRequest) {
 
 // Run a test by file name
 function runTestServer(testFile: string): void {
+    // WebSocketService instance: Handles the test output stream
+    const webSocketService: WebSocketService = new WebSocketService();
+    webSocketService.connect(
+        (message: WebSocketMessage) => {},
+        (connected: boolean) => {}
+    );
+
     // Run the test using the playwright test <file> command
     const command = `npx playwright test ${testFile}`;
 
     // Try to run the test using the a realtime console executor
     try {
         // Run the test and log the output
-        execCommandRealtime(command, (onOutput: RealtimeOutput) => console.log(onOutput.line));
+        execCommandRealtime(command, (onOutput: RealtimeOutput) => {
+            // Send the test output to the web socket server
+            webSocketService.send({
+                type: 'test_output',
+                data: onOutput.line,
+                timestamp: new Date().toISOString()
+            });
+        }).then(() => {
+            // Disconnect from the web socket server
+            webSocketService.disconnect();
+        });
     // If an error occurs, throw it
     } catch (error) {
         throw error;
