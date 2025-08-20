@@ -20,20 +20,7 @@ export default function Home() {
 
   /* Fetch tests from server */
   useEffect(() => {
-    fetch('/api/tests').then(res => res.json()).then(data => {
-      const testsFound: Test[] = []
-      for (let i = 0; i < data.length; i++) {
-        const test = data[i];
-        testsFound.push({
-          id: (i + 1).toString(),
-          name: test.name,
-          status: test.status,
-          failedAt: test.failedAt,
-          passedAt: test.passedAt
-        } as Test);
-      }
-      setTests(testsFound);
-    });
+    fetch('/api/tests').then(res => res.json()).then(data => setTests(data as Test[]));
   }, []);
 
   const formatTimestamp = (date: Date) => {
