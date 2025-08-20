@@ -43,6 +43,12 @@ export default function Home() {
         body: JSON.stringify({ test: test as Test })
       });
 
+      /* Run the test on the server */
+      fetch(`/api/run-test`, {
+        method: 'POST',
+        body: JSON.stringify({ testName: test.name })
+      });
+
       /* Simulate API call to run test */
       await new Promise(resolve => setTimeout(resolve, 2000));
       
