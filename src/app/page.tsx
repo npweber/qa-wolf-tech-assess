@@ -2,15 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import StatusDisplay from './component/statusDisplay';
-
-// Test interface: Represents a test with its ID, name, status, and timestamps for failure or success
-interface Test {
-  id: string;
-  name: string;
-  status: 'not run' | 'running' | 'failed' | 'passed';
-  failedAt?: string;
-  passedAt?: string;
-}
+import { Test } from '@/app/types/test';
 
 // Home component: Main page of the application
 export default function Home() {
@@ -36,11 +28,21 @@ export default function Home() {
 
   const runTest = async (testId: string) => {
     /* Update the test status to running */
+    tests.map(test => test.id === testId ? { ...test, status: 'running' } : test);
     setTests(prev => prev.map(test => 
       test.id === testId ? { ...test, status: 'running' } : test
     ));
 
+    /* Get the test from the tests array */
+    const test = tests.find(test => test.id === testId) as Test;
+
     try {
+      /* Update the test status to running on the server */
+      fetch(`/api/tests`, {
+        method: 'POST',
+        body: JSON.stringify({ test: test as Test })
+      });
+
       /* Simulate API call to run test */
       await new Promise(resolve => setTimeout(resolve, 2000));
       
@@ -51,6 +53,12 @@ export default function Home() {
       const timestamp = formatTimestamp(new Date());
       
       /* Update the test status to passed or failed */
+      tests.map(test => test.id === testId ? {
+        ...test, 
+        status: isPassed ? 'passed' : 'failed', 
+        passedAt: isPassed ? timestamp : undefined, 
+        failedAt: !isPassed ? timestamp : undefined 
+      } : test);
       setTests(prev => prev.map(test => 
         test.id === testId ? {
           ...test,
@@ -66,6 +74,11 @@ export default function Home() {
         test.id === testId ? { ...test, status: 'failed', failedAt: formatTimestamp(new Date()) } : test
       ));
     }
+
+    fetch(`/api/tests`, {
+      method: 'POST',
+      body: JSON.stringify({ test: test as Test })
+    });
   };
 
   const runAllTests = async () => {

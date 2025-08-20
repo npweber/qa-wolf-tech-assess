@@ -1,8 +1,7 @@
 {
-    "id": "1",
-    "name": "sample test",
-    "file": "sample.spec.ts",
-    "status": "not run",
-    "failedAt": null,
-    "passedAt": null
+  "id": "1",
+  "name": "sample",
+  "file": "sample.spec.ts",
+  "status": "passed",
+  "passedAt": "8/20, 09:10:48"
 }
