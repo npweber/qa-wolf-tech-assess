@@ -18,17 +18,22 @@ export default function Home() {
   const [tests, setTests] = useState<Test[]>([]);
   const [isRunningAll, setIsRunningAll] = useState(false);
 
-  /* Mock data for demonstration - replace with actual API calls */
+  /* Fetch tests from server */
   useEffect(() => {
-    /* Simulate fetching tests from server */
-    const mockTests: Test[] = [
-      { id: '1', name: 'test_homepage_loads', status: 'not run' },
-      { id: '2', name: 'test_article_links_work', status: 'not run' },
-      { id: '3', name: 'test_search_functionality', status: 'not run' },
-      { id: '4', name: 'test_user_login', status: 'not run' },
-      { id: '5', name: 'test_comment_system', status: 'not run' },
-    ];
-    setTests(mockTests);
+    fetch('/api/tests').then(res => res.json()).then(data => {
+      const testsFound: Test[] = []
+      for (let i = 0; i < data.length; i++) {
+        const test = data[i];
+        testsFound.push({
+          id: (i + 1).toString(),
+          name: test.name,
+          status: test.status,
+          failedAt: test.failedAt,
+          passedAt: test.passedAt
+        } as Test);
+      }
+      setTests(testsFound);
+    });
   }, []);
 
   const formatTimestamp = (date: Date) => {
