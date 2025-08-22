@@ -1,14 +1,15 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { WebSocketMessage } from '@/app/types/websocketMessage';
+import { WebSocketMessage, isValidWebSocketMessage } from '@/types/websocketMessage';
+import { safeJsonParse, safeJsonStringify } from '@/app/lib/util';
 
-// TestWebSocketServer class: Handle communication between the test runner and the client console output
+// TestWebSocketServer class: Handle communication between the consoleOutputPoster and the consoleOutputListener
 export class TestWebSocketServer {
   /* WebSocketServer instance */
   private wss: WebSocketServer;
-  /* Set of connected clients */
+  /* Set of connected clients: Maximum of 2 clients */
   private clients: Set<WebSocket> = new Set();
 
-  // Constructor: Creates a web socket server instance
+  // Constructor: Creates and sets up a web socket server instance
   constructor(port: number = 3001) {
     this.wss = new WebSocketServer({ port });
     this.setupWebSocketServer();
@@ -20,96 +21,95 @@ export class TestWebSocketServer {
     this.wss.on('connection', (ws: WebSocket) => {
         // If the number of connected clients is less than 2, add the new client to the clients set
         if(this.getConnectedClientsCount() < 2) {
-            // Log the new web socket client connection and add it to the clients set
-            console.log('New WebSocket client connected');
+            // Add the new web socket client to the clients set
             this.clients.add(ws);
-
-            // Send connection status to the client
-            this.sendToClient(ws, {
-                type: 'connection_status',
-                data: { status: 'connected' },
-                timestamp: new Date().toISOString()
-            });
+            
+            // Log the new web socket client connection and the total number of connected clientss
+            console.log('TestWebSocketServer: New client connected. Total clients: ' + this.getConnectedClientsCount());
 
             // Handle incoming messages from the client
             ws.on('message', (message: string) => {
+                // Try to handle the message
                 try {
-                    // Parse the message from the client
-                    const parsedMessage = JSON.parse(message);
-                    // Handle the message from the client
-                    this.handleMessage(ws, parsedMessage);
-                } catch (error) {
-                    // If the message is invalid, send an error message to the client
-                    console.error('Error parsing WebSocket message:', error);
-                    this.sendToClient(ws, {
-                        type: 'test_output',
-                        data: { error: 'Invalid message' },
-                        timestamp: new Date().toISOString()
-                    });
+                    // Safe JSON parse the message and handle it
+                    this.handleMessage(ws, safeJsonParse(message));
+                } catch (error: any) {
+                    // Log a warning if the message handling fails
+                    console.warn(`TestWebSocketServer: WARNING: Handling message failed: ${error.message}. Message: ${message}`);
                 }
             });
 
             // Handle client disconnection
             ws.on('close', () => {
-                console.log('WebSocket client disconnected');
-                this.clients.delete(ws);
+                this.clients.delete(ws);  
+                console.log('TestWebSocketServer: Client disconnected. Total clients: ' + this.getConnectedClientsCount());
             });
 
             // Handle connection errors
             ws.on('error', (error) => {
-                console.error('WebSocket error:', error);
+                console.error(`TestWebSocketServer: ERROR: Client error: ${error}`);
                 this.clients.delete(ws);
             });
         } else {
-            // If the number of connected clients is greater than or equal to 2, send an error message to the new client
-            console.error('TestWebSocketServer: Maximum number of clients reached, closing connection');
+            // If the number of connected clients is greater than or equal to 2, 
+            // send an error message to the new client, stating that the web socket server is full.
             this.sendToClient(ws, {
-                type: 'test_output',
-                data: { error: 'Maximum number of clients reached, closing connection' },
+                type: 'error',
+                data: { message: 'MAX_CLIENTS_REACHED' },
                 timestamp: new Date().toISOString()
             });
-            // Close the connection to the new client
-            ws.close();
         }
     });
-    console.log(`WebSocket server started on port ${this.wss.options.port}`);
+    console.log(`TestWebSocketServer: Started on port ${this.wss.options.port}`);
   }
 
-  // TODO: Handle a message from a client
-  private handleMessage(ws: WebSocket, message: any) {
-        switch (message.type) {
-            // If the message is a test output, send it to the other client, 
-            // aka, the test process output listener
-            case 'test_output': {
-                this.clients.forEach(client => {
-                    if (client !== ws && client.readyState === WebSocket.OPEN)
-                        this.sendToClient(client, message);
-                });
-                break;
-            }
-            case 'test_status':
-                // TODO: Handle a test status message
-                break;
-            case 'connection_status':
-                // TODO: Handle a connection status message
-                break;
-            default:
-                console.warn('TestWebSocketServer: Unknown message type:', message.type);
-        }
-    }
+  // Handle a message from a client
+  private handleMessage(ws: WebSocket, message: any) : void {
+      switch (message.type) {
+          // If the message is type test_output, send it to the other client, 
+          // aka, the console output listener.
+          case 'test_output': {
+              const otherClient = Array.from(this.clients).find(client => client !== ws);
+              if (otherClient) {
+                  console.log('TestWebSocketServer: Sending test output to console output listener.');
+                  this.sendToClient(otherClient, message);
+              }
+              // If no other client is found, throw an error
+              else 
+                  throw new Error('No console output listener found. Could not send test output.');
+              break;
+          }
+          // TODO: Handle a test status message
+          case 'test_status': {
+              break;
+          }
+          // If the message is an unknown type, throw an error
+          default:
+              throw new Error(`Unknown message type: ${message.type}`);
+      }
+  }
 
   // Send a message to a client
-  private sendToClient(ws: WebSocket, message: WebSocketMessage) {
+  private sendToClient(ws: WebSocket, message: WebSocketMessage) : void {
+    // If the client is open, send the message
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(message));
+      // If the message is valid, send it to the client,
+      // after safe JSON stringifying it.
+      const validMessage = isValidWebSocketMessage(message);
+      if (validMessage) {
+        try {
+          ws.send(safeJsonStringify(validMessage));
+        } catch (error: any) {
+          console.warn(`TestWebSocketServer: WARNING: Could not send message: ${error.message}`);
+        }
+      // If the message is invalid, log a warning
+      } else {
+        console.warn('TestWebSocketServer: WARNING: Cannot send message. Invalid message format');
+      }
+    // If the client is not open, log a warning
+    } else {
+      console.warn('TestWebSocketServer: WARNING: Client is not open. Could not send message.');
     }
-  }
-
-  // Broadcast a message to all clients
-  private broadcast(message: WebSocketMessage) {
-    this.clients.forEach(client => {
-      this.sendToClient(client, message);
-    });
   }
 
   // Get the number of connected clients
@@ -118,9 +118,9 @@ export class TestWebSocketServer {
   }
 
   // Close the web socket server
-  public close() {
+  public close() : void {
     this.wss.close();
-    console.log('WebSocket server closed');
+    console.log('TestWebSocketServer: Closed');
   }
 }
 
@@ -136,7 +136,7 @@ export function getWebSocketServer(port?: number): TestWebSocketServer {
 }
 
 // Close the web socket server
-export function closeWebSocketServer() {
+export function closeWebSocketServer() : void {
   if (websocketServer) {
     websocketServer.close();
     websocketServer = null;

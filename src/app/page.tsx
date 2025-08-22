@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import StatusDisplay from './component/statusDisplay';
-import ConsoleOutput from './component/consoleOutput';
-import { Test } from './types/test';
-import { WebSocketMessage } from './types/websocketMessage';
-import { WebSocketService } from './services/websocketService';
+import StatusDisplay from '@/app/component/statusDisplay';
+import ConsoleOutput from '@/app/component/consoleOutput';
+import { Test } from '@/types/test';
+import { WebSocketMessage } from '@/types/websocketMessage';
+import { TestWebSocketService } from '@/app/services/websocketService';
 
 // Home component: Main page of the application
 export default function Home() {
@@ -17,7 +17,7 @@ export default function Home() {
   and web socket service state variables */
   const [consoleOutput, setConsoleOutput] = useState<string[]>([]);
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
-  const [testOutputListener] = useState(() => new WebSocketService());
+  const [consoleOutputListener] = useState(() => new TestWebSocketService());
 
   /* Fetch tests from server */
   useEffect(() => {
@@ -27,26 +27,45 @@ export default function Home() {
   /* WebSocket connection setup */
   useEffect(() => {
     const handleWebSocketMessage = (message: WebSocketMessage) => {
-      /* If the message is a test output, append it to the console output, 
-      prefixed with a now() timestamp */
-      if (message.type === 'test_output') {
-        setConsoleOutput(prev => [...prev, `[${new Date(message.timestamp).toLocaleTimeString()}] ${message.data}`]);
+      /* Handle the message based on the type */
+      switch (message.type) {
+        /* If the message is type test_output, append it to the console output */
+        case 'test_output': {
+          setConsoleOutput(prev => [...prev, `[${message.timestamp}] ${message.data.message}`]);
+          break;
+        }
+        /* If the message is type error, handle the error */
+        case 'error': {
+          /* If the error is that the web socket server is full, disconnect and log an error */
+          if (message.data.message === 'MAX_CLIENTS_REACHED') {
+            consoleOutputListener.disconnect();
+            console.error('TestWebSocketService: ERROR: WebSocket server is full. Could not be connected.');
+          }
+          /* If the error is any other type, disconnect and log the error */
+          else {
+            consoleOutputListener.disconnect();
+            console.error(`TestWebSocketService: ERROR: ${message.data.message}`);
+          }
+          break;
+        }
+        // TODO: Handle test status
+        case 'test_status': {
+          
+        }
       }
     };
 
     /* If the connection status changes, update the connection status state variable */
-    const handleWebSocketStatusChange = (connected: boolean) => {
-      setIsWebSocketConnected(connected);
-    };
+    const handleWebSocketStatusChange = (connected: boolean) => setIsWebSocketConnected(connected);
 
     /* Connect to the web socket server */
-    testOutputListener.connect(handleWebSocketMessage, handleWebSocketStatusChange);
+    consoleOutputListener.connect(handleWebSocketMessage, handleWebSocketStatusChange);
 
     /* Disconnect from the web socket server when the component unmounts */
     return () => {
-      testOutputListener.disconnect();
+      consoleOutputListener.disconnect();
     };
-  }, [testOutputListener]);
+  }, [consoleOutputListener]);
 
   const formatTimestamp = (date: Date) => {
     return date.toLocaleString('en-US', {
@@ -65,7 +84,7 @@ export default function Home() {
     /* If the test is not found, return */
     if (!test) {   
       console.error(`Run test failed: Test not found: ${testId}`);
-      return
+      return;
     }
 
     /* Update the test status to running */
