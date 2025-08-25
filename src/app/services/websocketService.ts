@@ -32,9 +32,11 @@ export class TestWebSocketService {
       */
       this.ws.onmessage = (event) => {
         try {
-          onMessage(safeJsonParse(event.data));
-        } catch (error: any) {
-          console.warn(`TestWebSocketService: WARNING: Could not handle message: ${error.message}. Message: ${event.data}`);
+          const message: WebSocketMessage = safeJsonParse(event.data);
+          console.log(`TestWebSocketService: Received message: ${message.type} from web socket server. Message: ${message.data}`);
+          onMessage(message);
+        } catch (error) {
+          console.warn(`TestWebSocketService: WARNING: Could not handle message: ${error}. Message: ${event.data}`);
         }
       };
 
@@ -78,8 +80,9 @@ export class TestWebSocketService {
       if (isValidWebSocketMessage(message)) {
           try {
             this.ws.send(safeJsonStringify(message));
-          } catch (error: any) {
-            console.warn(`TestWebSocketService: WARNING: Could not send message: ${error.message}`);
+            console.log('TestWebSocketService: Sent message to web socket server.');
+          } catch (error) {
+            console.warn(`TestWebSocketService: WARNING: Could not send message: ${error}`);
           }
       /* If the message is invalid, log a warning */
       } else {

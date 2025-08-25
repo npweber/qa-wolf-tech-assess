@@ -33,16 +33,16 @@ export class TestWebSocketServer {
                 try {
                     // Safe JSON parse the message and handle it
                     this.handleMessage(ws, safeJsonParse(message));
-                } catch (error: any) {
+                } catch (error) {
                     // Log a warning if the message handling fails
-                    console.warn(`TestWebSocketServer: WARNING: Handling message failed: ${error.message}. Message: ${message}`);
+                    console.warn(`TestWebSocketServer: WARNING: Handling message failed: ${error}. Message: ${message}`);
                 }
             });
 
             // Handle client disconnection
             ws.on('close', () => {
                 this.clients.delete(ws);  
-                console.log('TestWebSocketServer: Client disconnected. Total clients: ' + this.getConnectedClientsCount());
+                console.log(`TestWebSocketServer: Client disconnected. Total clients: ${this.getConnectedClientsCount()}`);
             });
 
             // Handle connection errors
@@ -55,7 +55,7 @@ export class TestWebSocketServer {
             // send an error message to the new client, stating that the web socket server is full.
             this.sendToClient(ws, {
                 type: 'error',
-                data: { message: 'MAX_CLIENTS_REACHED' },
+                data: { message: 'MAX_CLIENTS_REACHED', testName: 'NONE' },
                 timestamp: new Date().toISOString()
             });
         }
@@ -63,30 +63,33 @@ export class TestWebSocketServer {
     console.log(`TestWebSocketServer: Started on port ${this.wss.options.port}`);
   }
 
-  // Handle a message from a client
-  private handleMessage(ws: WebSocket, message: any) : void {
-      switch (message.type) {
-          // If the message is type test_output, send it to the other client, 
-          // aka, the console output listener.
-          case 'test_output': {
-              const otherClient = Array.from(this.clients).find(client => client !== ws);
-              if (otherClient) {
-                  console.log('TestWebSocketServer: Sending test output to console output listener.');
-                  this.sendToClient(otherClient, message);
-              }
-              // If no other client is found, throw an error
-              else 
-                  throw new Error('No console output listener found. Could not send test output.');
-              break;
-          }
-          // TODO: Handle a test status message
-          case 'test_status': {
-              break;
-          }
-          // If the message is an unknown type, throw an error
-          default:
-              throw new Error(`Unknown message type: ${message.type}`);
-      }
+  // Handle a message from the ConsoleOutputPoster, and send it to the ConsoleOutputListener
+  // (2 clients: ConsoleOutputPoster and ConsoleOutputListener)
+  private handleMessage(ws: WebSocket, message: WebSocketMessage) : void {
+    // Get the other client (ConsoleOutputListener)
+    const otherClient = Array.from(this.clients).find(client => client !== ws);
+    // If the other client (ConsoleOutputListener) is found, 
+    // send the message to the ConsoleOutputListener.
+    if (otherClient) {
+        switch (message.type) {
+            case 'test_output': {
+                console.log(`TestWebSocketServer: Received test output: ${message.data.message} for test: ${message.data.testName} from ConsoleOutputPoster.`);
+                this.sendToClient(otherClient, message);
+                break;
+            }
+            case 'test_status': {
+                console.log(`TestWebSocketServer: Received test status: ${message.data.message} for test: ${message.data.testName} from ConsoleOutputPoster.`);
+                this.sendToClient(otherClient, message);
+                break;
+            }
+            // If the message is an unknown type, throw an error
+            default:
+                throw new Error(`Unknown message type: ${message.type}`);
+        }
+    // If the other client (ConsoleOutputListener) is not found, throw an error
+    } else {
+      throw new Error('No ConsoleOutputListener to send message to.');
+    }
   }
 
   // Send a message to a client
@@ -95,12 +98,12 @@ export class TestWebSocketServer {
     if (ws.readyState === WebSocket.OPEN) {
       // If the message is valid, send it to the client,
       // after safe JSON stringifying it.
-      const validMessage = isValidWebSocketMessage(message);
-      if (validMessage) {
+      if (isValidWebSocketMessage(message)) {
         try {
-          ws.send(safeJsonStringify(validMessage));
-        } catch (error: any) {
-          console.warn(`TestWebSocketServer: WARNING: Could not send message: ${error.message}`);
+          ws.send(safeJsonStringify(message));
+          console.log('TestWebSocketServer: Sent message to client.');
+        } catch (error) {
+          console.warn(`TestWebSocketServer: WARNING: Could not send message: ${error}`);
         }
       // If the message is invalid, log a warning
       } else {
