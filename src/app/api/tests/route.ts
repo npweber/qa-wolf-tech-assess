@@ -2,68 +2,83 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
-import { Test } from '@/app/types/test';
+import { Test } from '@/types/test';
+import { safeJsonParse, safeJsonStringify } from '@/app/lib/util';
 
 // Get all tests from the tests directory
-export async function GET(request: NextRequest) {
+export async function GET() : Promise<NextResponse<{ tests: Test[] } | { error: string }>> {
+    let response: NextResponse<{ tests: Test[] } | { error: string }>;
+
     // Initialize an empty array to store the tests
     const tests: Test[] = [];
 
     try {
         // Try to read the tests directory
-        const testsDirFiles = fs.readdirSync(path.join(process.cwd(), 'src/tests'), {
+        const testsDirFiles: fs.Dirent[] = fs.readdirSync(path.join(process.cwd(), 'src/tests'), {
             encoding: 'utf8',
             withFileTypes: true
         });
 
         // If there are tests, parse the JSON data and add it to the tests array
         if (testsDirFiles.length > 0) {
-            testsDirFiles.forEach(file => {
+            testsDirFiles.forEach((file: fs.Dirent) => {
                 if (file.isFile() && file.name.endsWith('.json')) {
-                    const testData = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'src/tests', file.name), 'utf8'));
+                    const testData: Test = safeJsonParse(fs.readFileSync(path.join(process.cwd(), 'src/tests', file.name), 'utf8'));
                     tests.push(testData);
                 }
             });
         }
-    // If there is an error, return a 500 error and log the error
+        response = NextResponse.json({ tests: tests }, { status: 200 });
+    // If there is an error, return a 500 error and the error message
     } catch (error) {
-        console.error('Failed to read tests directory:', error);
-        return NextResponse.json({ error: 'Failed to read tests directory' }, { status: 500 });
+        response = NextResponse.json({ error: `Failed to read tests directory: ${error}` }, { status: 500 });
     }
-
-    return NextResponse.json(tests);
+    return response;
 }
 
-export async function POST(request: NextRequest) {
-    let response: NextResponse;
+// Update a test by name
+export async function POST(request: NextRequest) : Promise<NextResponse<{ message: string } | { error: string }>> {
+    let response: NextResponse<{ message: string } | { error: string }>;
 
-    // Get the test & test json file from the request body
+    // If no request body is provided, return a 400 error
     if (!request.body) {
-        console.error('Failed to update test file: No test provided');
-        response = NextResponse.json({ error: 'No test provided' }, { status: 400 });
+        response = NextResponse.json({ error: 'No body provided' }, { status: 400 });
     }
-
-    const { test } : { test: Test } = await request.json();
-    if (!test) {
-        console.error('Failed to update test file: No test provided');
-        response = NextResponse.json({ error: 'No test provided' }, { status: 400 });
-    }
-    else if (!test.name) {
-        console.error('Failed to update test file: No test name provided');
-        response = NextResponse.json({ error: 'No test name provided' }, { status: 400 });
-    }
-    // If the test is valid, update the test file
     else {
-        const testFile = path.join(process.cwd(), 'src/tests', test.name + '.json');
-        // Try to update the test file
-        try {
-            fs.writeFileSync(testFile, JSON.stringify(test, null, 2));
-            response = NextResponse.json({ message: 'Test file updated successfully' }, { status: 200 });
-        // If there is an error, return a 500 error and log the error
-        } catch (error) {
-            console.error('Failed to update test file:', error);
-            response = NextResponse.json({ error: 'Failed to update test file' }, { status: 500 });
+        // If the request body is provided, get the test
+        const { test } : { test: Test } = await request.json();
+        // If no test is provided, return a 400 error
+        if (!test) {
+            response = NextResponse.json({ error: 'No test provided' }, { status: 400 });
         }
-    }    
+        // If the test is provided, get the test name
+        else {
+            // If the test name is not provided, return a 400 error
+            if (!test.name) {
+                response = NextResponse.json({ error: 'No test name provided' }, { status: 400 });
+            }
+            // If the test name is provided, try to update the test file
+            else {
+                // Get the test file path
+                const testFile: string = path.join(process.cwd(), 'src/tests', test.name + '.json');
+
+                // Try to update the test file
+                try {
+                    // If the test file does not exist, return a 404 error
+                    if (!fs.existsSync(testFile)) {
+                        response = NextResponse.json({ error: 'Test file not found' }, { status: 404 });
+                    }
+                    // If the test file exists, try to update the test file
+                    else {
+                        fs.writeFileSync(testFile, safeJsonStringify(test));
+                        response = NextResponse.json({ message: `Test "${test.name}" updated successfully` }, { status: 200 });
+                    }
+                // If there is an error, return a 500 error
+                } catch (error) {
+                    response = NextResponse.json({ error: `Failed to update test file: ${error}` }, { status: 500 });
+                }
+            }
+        }    
+    }
     return response;
 }
