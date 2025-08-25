@@ -10,16 +10,14 @@ export async function POST(request: NextRequest) : Promise<NextResponse<{ messag
 
     // If no request body is provided, return a 400 error
     if (!request.body) {
-        console.error('POST /api/run-test: Failed to run test: No request body provided');
         response = NextResponse.json({ error: 'No request body provided' }, { status: 400 });
     }
-    // If the request body is provided, get the test name
+    // If the request body is provided, get the test name and run the test
     else {
-        const requestBody = await request.json();
-        const testName = requestBody.testName as string;
+        const { testName } : { testName: string } = await request.json();
+        
         // If no test name is provided, return a 400 error
         if (!testName) {
-            console.error('POST /api/run-test: Failed to run test: No test name provided');
             response = NextResponse.json({ error: 'No test name provided' }, { status: 400 });
         }
         // If the test name is provided, run the test
@@ -29,7 +27,7 @@ export async function POST(request: NextRequest) : Promise<NextResponse<{ messag
 
             // If the test is successful, log the message
             if (response.status == 200) 
-                console.log(`POST /api/run-test: Test "${testName}" ran successfully`);
+                console.log(`POST /api/run-test: Test '${testName}' ran successfully`);
         }
     }
     return response;
@@ -42,8 +40,8 @@ async function runTestServer(testFile: string): Promise<NextResponse<{ message: 
         // ConsoleOutputPoster: Posts test output to the web socket server
         const consoleOutputPoster: TestWebSocketService = new TestWebSocketService();
 
-        // Handle web socket messages
-        const handleWebSocketMessage = (message: WebSocketMessage) => {
+        // ConsoleOutputPoster: Web socket message handler
+        const handleWebSocketMessage: (message: WebSocketMessage) => void = (message: WebSocketMessage) => {
             // Only needs to handle errors from the web socket server.
             // All other message types are not sent to the console output listener.
             if (message.type === 'error') {
@@ -62,30 +60,31 @@ async function runTestServer(testFile: string): Promise<NextResponse<{ message: 
             }
         };
 
+        // ConsoleOutputPoster: Web socket connection status change handler
         // On web socket status change, run the test if the web socket is connected
-        const handleWebSocketStatusChange = (connected: boolean) => {
+        const handleWebSocketStatusChange: (connected: boolean) => void = (connected: boolean) => {
             if (connected && consoleOutputPoster.isConnected()) {
                 // Run the test using the playwright test <file> command
-                const command = `npx playwright test ${testFile}`;
+                const command: string = `npx playwright test ${testFile} --project=chromium`;
 
-                // Run the test and post the console output to the web socket server
+                // Run the test and, if the connection is still open, post the console output 
+                // to the web socket server
                 execCommandRealtime(command, (onOutput: RealtimeOutput) => {
-                    // If the connection is still open, post the console output to the web socket server
-                    if (connected && consoleOutputPoster.isConnected()) 
-                        // Post the console output to the web socket server
+                    if (connected && consoleOutputPoster.isConnected()) {
                         consoleOutputPoster.send({
                             type: 'test_output',
-                            data: { message: onOutput.line },
+                            data: { message: onOutput.line, testName: testFile.split('.')[0] },
                             timestamp: formatTimestampTestOutput(new Date())
                         });
+                    }
                 // If the test is finished, disconnect from the web socket server and resolve the promise
                 }).then(() => {
                     consoleOutputPoster.disconnect();
-                    resolve(NextResponse.json({ message: 'Test run successfully' }, { status: 200 }));
+                    resolve(NextResponse.json({ message: `Test script '${testFile}' ran successfully` }, { status: 200 }));
                 // If the test fails, disconnect from the web socket server and reject the promise
                 }).catch((error: any) => {
                     consoleOutputPoster.disconnect();
-                    reject(NextResponse.json({ error: `Failed to run test "${testFile}": ${error.message}` }, { status: 500 }));
+                    reject(NextResponse.json({ error: `Failed to run test script '${testFile}': ${error.message}` }, { status: 500 }));
                 });
             }
         }
